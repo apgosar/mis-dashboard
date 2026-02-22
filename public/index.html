@@ -49,6 +49,17 @@
           <option value="all">All Months</option>
         </select>
       </div>
+      <div class="month-filter">
+        <label for="bankSelect" class="month-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" />
+          </svg>
+          Bank
+        </label>
+        <select id="bankSelect" class="month-select">
+          <option value="all">All Banks</option>
+        </select>
+      </div>
     </div>
     <div class="header-right">
       <div class="refresh-control">
@@ -72,7 +83,7 @@
 
   <!-- KPI Cards -->
   <section class="kpi-section" id="kpiSection">
-    <div class="kpi-card kpi-total">
+    <div class="kpi-card kpi-total" id="kpiTotal" style="cursor:pointer" title="Click to view all cases">
       <div class="kpi-icon">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -230,7 +241,15 @@
           <h2 class="drilldown-title" id="drilldownTitle">Details</h2>
           <span class="drilldown-badge" id="drilldownCount">0 records</span>
         </div>
-        <button class="drilldown-close" id="drilldownClose">&times;</button>
+        <div class="drilldown-actions">
+          <button class="btn-csv" id="btnExportCsv" title="Export to CSV">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            Export CSV
+          </button>
+          <button class="drilldown-close" id="drilldownClose">&times;</button>
+        </div>
       </div>
       <div class="drilldown-search">
         <input type="text" id="drilldownSearch" placeholder="Search within results..." />

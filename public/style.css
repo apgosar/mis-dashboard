@@ -109,6 +109,7 @@ body {
 .header-center {
   display: flex;
   align-items: center;
+  gap: 24px;
 }
 
 .month-filter {
@@ -881,6 +882,34 @@ body {
   color: var(--accent-blue-light);
   padding: 3px 12px;
   border-radius: 20px;
+}
+
+.drilldown-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-csv {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(43, 87, 151, 0.15);
+  color: var(--accent-blue-light);
+  border: 1px solid rgba(43, 87, 151, 0.3);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-csv:hover {
+  background: rgba(43, 87, 151, 0.3);
+  color: #fff;
+  border-color: rgba(43, 87, 151, 0.5);
 }
 
 .drilldown-close {

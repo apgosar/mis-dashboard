@@ -109,10 +109,24 @@ function parseDate(dateStr) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// TAT Breakup for "Report Released" cases: Report Date - Initiation Date
+// Count business days between two dates (excludes Sundays)
+function businessDaysDiff(startDate, endDate) {
+  if (endDate < startDate) return 0;
+  let count = 0;
+  const cur = new Date(startDate);
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  while (cur < end) {
+    cur.setDate(cur.getDate() + 1);
+    if (cur.getDay() !== 0) count++; // 0 = Sunday
+  }
+  return count;
+}
+
+// TAT Breakup for "Report Released" cases: Report Date - Initiation Date (excl. Sundays)
 function getTATBreakup(rows) {
   const buckets = { 'T+0': 0, 'T+1': 0, 'T+2': 0, 'T+3': 0, 'T+4+': 0 };
-  // Store Sr no lists per bucket for drill-down
   const bucketRows = { 'T+0': [], 'T+1': [], 'T+2': [], 'T+3': [], 'T+4+': [] };
   let totalCases = 0;
 
@@ -122,8 +136,7 @@ function getTATBreakup(rows) {
     const reportDate = parseDate(row['Report Date']);
     if (!initDate || !reportDate) return;
 
-    const diffMs = reportDate.getTime() - initDate.getTime();
-    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    const diffDays = businessDaysDiff(initDate, reportDate);
     totalCases++;
 
     let bucket;
@@ -140,27 +153,27 @@ function getTATBreakup(rows) {
   return { buckets, bucketRows, totalCases };
 }
 
-// Calculate Avg Visit TAT = Visit Date - Initiation Date (in days)
+// Calculate Avg Visit TAT = Visit Date - Initiation Date (excl. Sundays)
 function calcAvgVisitTAT(rows) {
   let sum = 0, count = 0;
   rows.forEach(row => {
     const initDate = parseDate(row['Initiation Date']);
     const visitDate = parseDate(row['Visit Date']);
     if (!initDate || !visitDate) return;
-    const diff = Math.round((visitDate.getTime() - initDate.getTime()) / (1000 * 60 * 60 * 24));
+    const diff = businessDaysDiff(initDate, visitDate);
     if (diff >= 0) { sum += diff; count++; }
   });
   return count > 0 ? Math.round((sum / count) * 100) / 100 : 0;
 }
 
-// Calculate Avg Report TAT = Report Date - Initiation Date (in days)
+// Calculate Avg Report TAT = Report Date - Initiation Date (excl. Sundays)
 function calcAvgReportTAT(rows) {
   let sum = 0, count = 0;
   rows.forEach(row => {
     const initDate = parseDate(row['Initiation Date']);
     const reportDate = parseDate(row['Report Date']);
     if (!initDate || !reportDate) return;
-    const diff = Math.round((reportDate.getTime() - initDate.getTime()) / (1000 * 60 * 60 * 24));
+    const diff = businessDaysDiff(initDate, reportDate);
     if (diff >= 0) { sum += diff; count++; }
   });
   return count > 0 ? Math.round((sum / count) * 100) / 100 : 0;
@@ -185,6 +198,20 @@ function getAvailableMonths(rows) {
 function filterByMonth(rows, month) {
   if (!month || month === 'all') return rows;
   return rows.filter(row => getMonthKey(row['Initiation Date']) === month);
+}
+
+function filterByBank(rows, bank) {
+  if (!bank || bank === 'all') return rows;
+  return rows.filter(row => (row['Bank Name'] || '') === bank);
+}
+
+function getAvailableBanks(rows) {
+  const bankSet = new Set();
+  rows.forEach(row => {
+    const bank = (row['Bank Name'] || '').trim();
+    if (bank) bankSet.add(bank);
+  });
+  return Array.from(bankSet).sort();
 }
 
 function countBy(rows, field) {
@@ -249,7 +276,8 @@ app.get('/api/data', async (req, res) => {
   try {
     const rawData = await fetchSheetData();
     const allRows = parseRows(rawData);
-    const rows = filterByMonth(allRows, req.query.month);
+    let rows = filterByMonth(allRows, req.query.month);
+    rows = filterByBank(rows, req.query.bank);
     res.json({ success: true, count: rows.length, data: rows });
   } catch (error) {
     console.error('Error fetching data:', error.message);
@@ -262,13 +290,17 @@ app.get('/api/metrics', async (req, res) => {
   try {
     const rawData = await fetchSheetData();
     const allRows = parseRows(rawData);
-    const rows = filterByMonth(allRows, req.query.month);
+    let rows = filterByMonth(allRows, req.query.month);
+    rows = filterByBank(rows, req.query.bank);
 
     const metrics = {
       totalCases: rows.length,
 
       // Available months for dropdown
       availableMonths: getAvailableMonths(allRows),
+
+      // Available banks for dropdown
+      availableBanks: getAvailableBanks(allRows),
 
       // Today's Schedule: cases with Status "Today Schedule"
       todaySchedule: rows

@@ -8,8 +8,13 @@ let autoRefreshEnabled = true;
 let countdown = REFRESH_INTERVAL;
 let countdownTimer = null;
 let charts = {};
+// Get current month in YYYY-MM format
+const now = new Date();
+const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
 let allRows = []; // Store all rows for drill-down filtering
-let selectedMonth = 'all';
+let selectedMonth = currentMonthStr; // Default to current month
+let selectedBank = 'all';
 let lastMetrics = null; // Store for resize re-render
 let othersLabelMap = {}; // Store original labels aggregated into "Others"
 
@@ -78,6 +83,27 @@ document.addEventListener('DOMContentLoaded', () => {
         resetCountdown();
     });
 
+    // Bank filter dropdown
+    document.getElementById('bankSelect').addEventListener('change', (e) => {
+        selectedBank = e.target.value;
+        fetchAndRender();
+        resetCountdown();
+    });
+
+    // Total Cases drill-down
+    document.getElementById('kpiTotal').addEventListener('click', () => {
+        currentDrilldownRows = allRows;
+        document.getElementById('drilldownTitle').textContent = 'All Cases';
+        document.getElementById('drilldownCount').textContent = `${allRows.length} records`;
+        document.getElementById('drilldownSearch').value = '';
+        renderDrilldownTable(allRows);
+        document.getElementById('drilldownOverlay').classList.add('open');
+        document.body.style.overflow = 'hidden';
+    });
+
+    // CSV export
+    document.getElementById('btnExportCsv').addEventListener('click', exportDrilldownCSV);
+
     // Drill-down modal controls
     document.getElementById('drilldownClose').addEventListener('click', closeDrilldown);
     document.getElementById('drilldownOverlay').addEventListener('click', (e) => {
@@ -103,11 +129,14 @@ document.addEventListener('DOMContentLoaded', () => {
 async function fetchAndRender() {
     showLoading(true);
     try {
-        const monthParam = selectedMonth !== 'all' ? `?month=${selectedMonth}` : '';
+        let params = [];
+        if (selectedMonth !== 'all') params.push(`month=${selectedMonth}`);
+        if (selectedBank !== 'all') params.push(`bank=${encodeURIComponent(selectedBank)}`);
+        const queryStr = params.length ? '?' + params.join('&') : '';
         // Fetch metrics and raw data in parallel
         const [metricsRes, dataRes] = await Promise.all([
-            fetch(API_METRICS + monthParam),
-            fetch(API_DATA + monthParam)
+            fetch(API_METRICS + queryStr),
+            fetch(API_DATA + queryStr)
         ]);
 
         if (!metricsRes.ok) throw new Error(`Metrics error: ${metricsRes.status}`);
@@ -123,6 +152,7 @@ async function fetchAndRender() {
 
         lastMetrics = metricsJson.metrics;
         populateMonthDropdown(metricsJson.metrics.availableMonths);
+        populateBankDropdown(metricsJson.metrics.availableBanks);
         renderSchedule(metricsJson.metrics.todaySchedule);
         renderKPIs(metricsJson.metrics);
         renderTATBreakup(metricsJson.metrics.tatBreakup);
@@ -153,8 +183,61 @@ function populateMonthDropdown(months) {
         opt.textContent = m.label;
         select.appendChild(opt);
     });
-    // Restore selection
+
+    // Check if selectedMonth exists in options, else fallback to 'all'
+    if (select.querySelector(`option[value="${selectedMonth}"]`)) {
+        select.value = selectedMonth;
+    } else {
+        selectedMonth = 'all';
+        select.value = 'all';
+    }
+}
+
+// ===== Bank Dropdown =====
+function populateBankDropdown(banks) {
+    const select = document.getElementById('bankSelect');
+    const current = select.value;
+    const existingValues = Array.from(select.options).map(o => o.value).join(',');
+    const newValues = 'all,' + banks.join(',');
+    if (existingValues === newValues) return;
+
+    select.innerHTML = '<option value="all">All Banks</option>';
+    banks.forEach(bank => {
+        const opt = document.createElement('option');
+        opt.value = bank;
+        opt.textContent = bank;
+        select.appendChild(opt);
+    });
     select.value = current && select.querySelector(`option[value="${current}"]`) ? current : 'all';
+}
+
+// ===== CSV Export =====
+function exportDrilldownCSV() {
+    if (!currentDrilldownRows.length) return;
+
+    const columns = DRILLDOWN_COLUMNS;
+    const csvRows = [];
+
+    // Header
+    csvRows.push(columns.map(c => `"${c}"`).join(','));
+
+    // Data rows
+    currentDrilldownRows.forEach(row => {
+        csvRows.push(columns.map(col => {
+            const val = (row[col] || '').toString().replace(/"/g, '""');
+            return `"${val}"`;
+        }).join(','));
+    });
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const title = document.getElementById('drilldownTitle').textContent.replace(/[^a-zA-Z0-9]/g, '_');
+    a.href = url;
+    a.download = `VDS_${title}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 // ===== TAT Breakup =====
