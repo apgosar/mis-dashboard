@@ -88,6 +88,36 @@ The dashboard recognizes these status values for special behavior:
 
 ---
 
+## Data Filtering & Inclusion Rules
+
+It is important to understand which cases are included in each metric, especially when data is missing (e.g., empty dates). 
+
+### 1. Global Filters (Month & Bank)
+The top dropdowns (Month and Bank) act as **global filters**. Changing these will filter the *entire dataset* before any metrics or charts are calculated.
+*   **Month Filter:** Filters cases based on the **`Initiation Date`** column. If a record has an invalid or empty Initiation Date, it will only appear when "All Months" is selected.
+*   **Bank Filter:** Filters cases based on an exact match with the **`Bank Name`** column.
+
+### 2. Main KPI Cards
+*   **Total Cases:** Shows the absolute count of all rows that pass the global filters, *regardless* of whether they have empty dates, missing statuses, or blank fields.
+*   **Avg Visit TAT:** Calculates `(Visit Date - Initiation Date)`. It **EXCLUDES** any row where either the Visit Date or Initiation Date is empty or invalid. *Note: Excludes Sundays.*
+*   **Avg Report TAT:** Calculates `(Report Date - Initiation Date)`. It **EXCLUDES** any row where either the Report Date or Initiation Date is empty or invalid. *Note: Excludes Sundays.*
+
+### 3. TAT Breakup Section
+The TAT Breakup section (T+0, T+1, etc.) calculates `(Report Date - Initiation Date)` to determine the bucket.
+*   It **ONLY INCLUDES** rows where the `Status` is exactly **"Report Released"**.
+*   It **EXCLUDES** rows where either the Report Date or Initiation Date is empty.
+*   *Note: An empty 'Visit Date' does NOT exclude a case from this section.*
+*   *Note: Excludes Sundays in calculation.*
+
+### 4. Overview Charts
+All charts (Case Status, Property Type, Location, etc.) simply count the frequency of text in their respective columns for rows passing the global filters.
+*   If a row has an **empty value** for that specific column, it is simply **not counted** in that specific chart. It is *not* removed from the rest of the dashboard.
+
+### 5. Today's Schedule
+*   **ONLY INCLUDES** rows where the `Status` is exactly **"Today Schedule"**.
+
+---
+
 ## Local Development
 
 ### Prerequisites
