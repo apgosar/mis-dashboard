@@ -57,8 +57,7 @@ function parseRows(rawData) {
     });
     return obj;
   });
-  // Exclude rows where "Visit Date" is blank
-  return rows.filter(row => row['Visit Date'] && row['Visit Date'] !== '');
+  return rows;
 }
 
 // Parse "Initiation Date" to extract month key like "2025-01"
@@ -278,7 +277,15 @@ app.get('/api/data', async (req, res) => {
     const allRows = parseRows(rawData);
     let rows = filterByMonth(allRows, req.query.month);
     rows = filterByBank(rows, req.query.bank);
-    res.json({ success: true, count: rows.length, data: rows });
+
+    // Exclude 'Query' status with empty 'Visit Date'
+    const validRows = rows.filter(row => {
+      const status = (row['Status'] || '').trim();
+      const visitDate = (row['Visit Date'] || '').trim();
+      return !(status === 'Query' && !visitDate);
+    });
+
+    res.json({ success: true, count: validRows.length, data: validRows });
   } catch (error) {
     console.error('Error fetching data:', error.message);
     res.status(500).json({ success: false, error: error.message });
@@ -293,8 +300,31 @@ app.get('/api/metrics', async (req, res) => {
     let rows = filterByMonth(allRows, req.query.month);
     rows = filterByBank(rows, req.query.bank);
 
+    const validRows = [];
+    const queryNotVisited = [];
+
+    rows.forEach(row => {
+      const status = (row['Status'] || '').trim();
+      const visitDate = (row['Visit Date'] || '').trim();
+      if (status === 'Query' && !visitDate) {
+        queryNotVisited.push({
+          srNo: row['Sr no'] || '',
+          borrower: row['Borrower Name'] || '',
+          bank: row['Bank Name'] || '',
+          branch: row['Branch'] || '',
+          address: row['Address'] || '',
+          location: row['Location'] || '',
+          propertyType: row['Property typ'] || '',
+          engineer: row['Engineer Name'] || '',
+          initiationDate: row['Initiation Date'] || '',
+        });
+      } else {
+        validRows.push(row);
+      }
+    });
+
     const metrics = {
-      totalCases: rows.length,
+      totalCases: validRows.length,
 
       // Available months for dropdown
       availableMonths: getAvailableMonths(allRows),
@@ -303,7 +333,7 @@ app.get('/api/metrics', async (req, res) => {
       availableBanks: getAvailableBanks(allRows),
 
       // Today's Schedule: cases with Status "Today Schedule"
-      todaySchedule: rows
+      todaySchedule: validRows
         .filter(row => row['Status'] === 'Today Schedule')
         .map(row => ({
           srNo: row['Sr no'] || '',
@@ -317,37 +347,157 @@ app.get('/api/metrics', async (req, res) => {
           initiationDate: row['Initiation Date'] || '',
         })),
 
+      // Query and Visit Not Done
+      queryNotVisited,
+
       // 1. Case Status Distribution
-      caseStatus: sortByCountDesc(countBy(rows, 'Status')),
+      caseStatus: sortByCountDesc(countBy(validRows, 'Status')),
 
       // 2. Property Type Distribution
-      propertyType: sortByCountDesc(countBy(rows, 'Property typ')),
+      propertyType: sortByCountDesc(countBy(validRows, 'Property typ')),
 
       // 3. Location Distribution (case-insensitive)
-      location: sortByCountDesc(countByCaseInsensitive(rows, 'Location')),
+      location: sortByCountDesc(countByCaseInsensitive(validRows, 'Location')),
 
       // 4. Engineer Efficiency (cases per engineer)
-      engineerEfficiency: sortByCountDesc(countBy(rows, 'Engineer Name')),
+      engineerEfficiency: sortByCountDesc(countBy(validRows, 'Engineer Name')),
 
       // 5. Report Generation Efficiency (cases per "Prepared by")
-      reportEfficiency: sortByCountDesc(countBy(rows, 'Prepared by')),
+      reportEfficiency: sortByCountDesc(countBy(validRows, 'Prepared by')),
 
-      // 6. Bank-wise Distribution
-      bankDistribution: sortByCountDesc(countBy(rows, 'Bank Name')),
+      // 6. Bank Distribution
+      bankDistribution: sortByCountDesc(countBy(validRows, 'Bank Name')),
 
-      // Avg Visit TAT (calculated: Visit Date - Initiation Date)
-      avgVisitTAT: calcAvgVisitTAT(rows),
+      // Averages
+      avgVisitTAT: calcAvgVisitTAT(validRows),
+      avgReportTAT: calcAvgReportTAT(validRows),
 
-      // Avg Report TAT (calculated: Report Date - Initiation Date)
-      avgReportTAT: calcAvgReportTAT(rows),
-
-      // 8. TAT Breakup for Report Released cases
-      tatBreakup: getTATBreakup(rows),
+      // TAT Breakup for Report Released
+      tatBreakup: getTATBreakup(validRows),
     };
 
     res.json({ success: true, metrics });
   } catch (error) {
     console.error('Error computing metrics:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Filter rows by date range (daily or weekly)
+function filterByDateRange(rows, type, dateStr) {
+  if (!dateStr) return rows;
+
+  if (type === 'daily') {
+    // dateStr = "YYYY-MM-DD"
+    return rows.filter(row => {
+      const d = parseDate(row['Initiation Date']);
+      if (!d) return false;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return key === dateStr;
+    });
+  }
+
+  if (type === 'weekly') {
+    // dateStr = "YYYY-MM-DD" (any day in the week; we compute Mon–Sun range)
+    const ref = new Date(dateStr + 'T00:00:00');
+    const day = ref.getDay(); // 0=Sun
+    const diffToMon = day === 0 ? -6 : 1 - day;
+    const monday = new Date(ref);
+    monday.setDate(ref.getDate() + diffToMon);
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    return rows.filter(row => {
+      const d = parseDate(row['Initiation Date']);
+      if (!d) return false;
+      return d >= monday && d <= sunday;
+    });
+  }
+
+  return rows;
+}
+
+// Report endpoint – returns metrics for a specific date range
+app.get('/api/report', async (req, res) => {
+  try {
+    const rawData = await fetchSheetData();
+    const allRows = parseRows(rawData);
+
+    // Apply date range filter
+    let rows = filterByDateRange(allRows, req.query.type || 'daily', req.query.date);
+    // Apply bank filter
+    rows = filterByBank(rows, req.query.bank);
+
+    // Separate query-not-visited
+    const validRows = [];
+    const queryNotVisited = [];
+    rows.forEach(row => {
+      const status = (row['Status'] || '').trim();
+      const visitDate = (row['Visit Date'] || '').trim();
+      if (status === 'Query' && !visitDate) {
+        queryNotVisited.push({
+          srNo: row['Sr no'] || '',
+          borrower: row['Borrower Name'] || '',
+          bank: row['Bank Name'] || '',
+          branch: row['Branch'] || '',
+          address: row['Address'] || '',
+          location: row['Location'] || '',
+          propertyType: row['Property typ'] || '',
+          engineer: row['Engineer Name'] || '',
+          initiationDate: row['Initiation Date'] || '',
+        });
+      } else {
+        validRows.push(row);
+      }
+    });
+
+    const metrics = {
+      totalCases: validRows.length,
+      todaySchedule: validRows
+        .filter(row => row['Status'] === 'Today Schedule')
+        .map(row => ({
+          srNo: row['Sr no'] || '',
+          borrower: row['Borrower Name'] || '',
+          bank: row['Bank Name'] || '',
+          branch: row['Branch'] || '',
+          address: row['Address'] || '',
+          location: row['Location'] || '',
+          propertyType: row['Property typ'] || '',
+          engineer: row['Engineer Name'] || '',
+          initiationDate: row['Initiation Date'] || '',
+        })),
+      queryNotVisited,
+      // All case details for the report
+      allCaseDetails: validRows.map(row => ({
+        srNo: row['Sr no'] || '',
+        borrower: row['Borrower Name'] || '',
+        bank: row['Bank Name'] || '',
+        branch: row['Branch'] || '',
+        location: row['Location'] || '',
+        propertyType: row['Property typ'] || '',
+        engineer: row['Engineer Name'] || '',
+        initiationDate: row['Initiation Date'] || '',
+        visitDate: row['Visit Date'] || '',
+        reportDate: row['Report Date'] || '',
+        status: row['Status'] || '',
+        preparedBy: row['Prepared by'] || '',
+      })),
+      caseStatus: sortByCountDesc(countBy(validRows, 'Status')),
+      propertyType: sortByCountDesc(countBy(validRows, 'Property typ')),
+      location: sortByCountDesc(countByCaseInsensitive(validRows, 'Location')),
+      engineerEfficiency: sortByCountDesc(countBy(validRows, 'Engineer Name')),
+      reportEfficiency: sortByCountDesc(countBy(validRows, 'Prepared by')),
+      bankDistribution: sortByCountDesc(countBy(validRows, 'Bank Name')),
+      avgVisitTAT: calcAvgVisitTAT(validRows),
+      avgReportTAT: calcAvgReportTAT(validRows),
+      tatBreakup: getTATBreakup(validRows),
+    };
+
+    res.json({ success: true, metrics });
+  } catch (error) {
+    console.error('Error generating report:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });

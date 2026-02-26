@@ -1101,3 +1101,269 @@ body {
 .chart-card:nth-child(5) {
   animation-delay: 0.4s;
 }
+
+/* ===== Generate Report Button ===== */
+.btn-report {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, rgba(212, 168, 67, 0.2), rgba(43, 87, 151, 0.2));
+  color: var(--accent-gold);
+  border: 1px solid rgba(212, 168, 67, 0.3);
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-report:hover {
+  background: linear-gradient(135deg, rgba(212, 168, 67, 0.35), rgba(43, 87, 151, 0.35));
+  border-color: var(--accent-gold);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(212, 168, 67, 0.15);
+}
+
+/* ===== Report Modal ===== */
+.report-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.report-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.report-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  width: 520px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+  transform: translateY(20px) scale(0.97);
+  transition: transform 0.3s ease;
+}
+
+.report-overlay.open .report-modal {
+  transform: translateY(0) scale(1);
+}
+
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.report-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.report-body {
+  padding: 24px 28px;
+}
+
+.report-field {
+  margin-bottom: 22px;
+}
+
+.report-field:last-child {
+  margin-bottom: 0;
+}
+
+.report-field-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+/* Radio Buttons */
+.report-radio-group {
+  display: flex;
+  gap: 20px;
+}
+
+.report-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  transition: var(--transition);
+}
+
+.report-radio:hover {
+  border-color: var(--accent-blue);
+}
+
+.report-radio input {
+  display: none;
+}
+
+.report-radio-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  position: relative;
+  transition: var(--transition);
+}
+
+.report-radio input:checked~.report-radio-mark {
+  border-color: var(--accent-gold);
+}
+
+.report-radio input:checked~.report-radio-mark::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-gold);
+}
+
+.report-radio:has(input:checked) {
+  border-color: var(--accent-gold);
+  background: rgba(212, 168, 67, 0.08);
+}
+
+/* Date Input */
+.report-date-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.88rem;
+  outline: none;
+  transition: var(--transition);
+}
+
+.report-date-input:focus {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 3px rgba(212, 168, 67, 0.15);
+}
+
+/* Checkboxes */
+.report-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.report-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: var(--transition);
+}
+
+.report-checkbox:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.report-checkbox input {
+  display: none;
+}
+
+.report-check-mark {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border-radius: 4px;
+  border: 2px solid var(--text-muted);
+  position: relative;
+  transition: var(--transition);
+}
+
+.report-checkbox input:checked~.report-check-mark {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+.report-checkbox input:checked~.report-check-mark::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.report-checkbox.hidden {
+  display: none;
+}
+
+/* Footer */
+.report-footer {
+  padding: 18px 28px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-download-report {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, var(--accent-gold), #c49630);
+  color: #0e1117;
+  border: none;
+  padding: 12px 28px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-download-report:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(212, 168, 67, 0.3);
+}
+
+.btn-download-report:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}

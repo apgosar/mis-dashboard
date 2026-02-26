@@ -12,6 +12,8 @@
     rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 
 <body>
@@ -62,6 +64,16 @@
       </div>
     </div>
     <div class="header-right">
+      <button class="btn-report" id="btnReport" title="Generate Report">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+          <polyline points="10 9 9 9 8 9" />
+        </svg>
+        Generate Report
+      </button>
       <div class="refresh-control">
         <label class="toggle-label">
           <span>Auto-Refresh</span>
@@ -175,7 +187,7 @@
           <line x1="8" y1="2" x2="8" y2="6" />
           <line x1="3" y1="10" x2="21" y2="10" />
         </svg>
-        <h2 class="schedule-title">Today's Schedule</h2>
+        <h2 class="schedule-title">Scheduled Visits</h2>
         <span class="schedule-badge" id="scheduleCount">0 visits</span>
       </div>
       <button class="schedule-expand" id="scheduleExpandBtn" title="Toggle">
@@ -233,6 +245,33 @@
     </div>
   </section>
 
+  <!-- Query and Visit Not Done -->
+  <section class="schedule-section" id="querySection" style="margin-top: 20px;">
+    <div class="schedule-header" id="queryToggle">
+      <div class="schedule-title-group">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 8v4l3 3" />
+        </svg>
+        <h2 class="schedule-title">Query and Visit not done</h2>
+        <span class="schedule-badge" id="queryCount" style="background: rgba(217, 83, 79, 0.2); color: #e76f51;">0
+          cases</span>
+      </div>
+      <button class="schedule-expand" id="queryExpandBtn" title="Toggle">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+    </div>
+    <div class="schedule-body" id="queryBody">
+      <table class="schedule-table" id="queryTable">
+        <thead id="queryHead"></thead>
+        <tbody id="queryTableBody"></tbody>
+      </table>
+      <p class="schedule-empty" id="queryEmpty">No query cases pending visit.</p>
+    </div>
+  </section>
+
   <!-- Drill-Down Modal -->
   <div class="drilldown-overlay" id="drilldownOverlay">
     <div class="drilldown-modal">
@@ -279,6 +318,73 @@
   <footer class="footer">
     <p>&copy; 2026 VDS Advisory — Real Estate Valuation & Consultancy. All rights reserved.</p>
   </footer>
+
+  <!-- Report Modal -->
+  <div class="report-overlay" id="reportOverlay">
+    <div class="report-modal">
+      <div class="report-header">
+        <h2 class="report-title">Generate Report</h2>
+        <button class="drilldown-close" id="reportClose">&times;</button>
+      </div>
+      <div class="report-body">
+        <!-- Report Type -->
+        <div class="report-field">
+          <label class="report-field-label">Report Type</label>
+          <div class="report-radio-group">
+            <label class="report-radio">
+              <input type="radio" name="reportType" value="daily" checked />
+              <span class="report-radio-mark"></span>
+              Daily
+            </label>
+            <label class="report-radio">
+              <input type="radio" name="reportType" value="weekly" />
+              <span class="report-radio-mark"></span>
+              Weekly
+            </label>
+          </div>
+        </div>
+        <!-- Date Input -->
+        <div class="report-field">
+          <label class="report-field-label" id="reportDateLabel">Select Date</label>
+          <input type="date" id="reportDateInput" class="report-date-input" />
+        </div>
+        <!-- Section Checkboxes -->
+        <div class="report-field">
+          <label class="report-field-label">Sections to Include</label>
+          <div class="report-sections" id="reportSections">
+            <label class="report-checkbox" data-section="kpi"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>KPI Summary</label>
+            <label class="report-checkbox" data-section="tat"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>TAT Breakup</label>
+            <label class="report-checkbox" data-section="caseStatus"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>Case Status Distribution</label>
+            <label class="report-checkbox" data-section="propertyType"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>Property Type Distribution</label>
+            <label class="report-checkbox" data-section="location"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>Location Distribution</label>
+            <label class="report-checkbox" data-section="engineer"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>Engineer Efficiency</label>
+            <label class="report-checkbox" data-section="bank" id="reportBankCheckbox"><input type="checkbox"
+                checked /><span class="report-check-mark"></span>Bank-wise Distribution</label>
+            <label class="report-checkbox" data-section="reportEff"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>Report Generation Efficiency</label>
+            <label class="report-checkbox" data-section="schedule"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>Scheduled Visits</label>
+            <label class="report-checkbox" data-section="query"><input type="checkbox" checked /><span
+                class="report-check-mark"></span>Query and Visit not done</label>
+          </div>
+        </div>
+      </div>
+      <div class="report-footer">
+        <button class="btn-download-report" id="btnDownloadReport">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+          </svg>
+          Download PDF
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
