@@ -135,14 +135,20 @@ function getTATBreakup(rows) {
     const reportDate = parseDate(row['Report Date']);
     if (!initDate || !reportDate) return;
 
-    const diffDays = businessDaysDiff(initDate, reportDate);
+    let diffDays = businessDaysDiff(initDate, reportDate);
+    const queryTime = parseFloat(row['Query Time (Days)']);
+    if (!isNaN(queryTime) && queryTime > 0) {
+      diffDays = Math.max(0, diffDays - queryTime);
+    }
+    
     totalCases++;
 
     let bucket;
-    if (diffDays <= 0) bucket = 'T+0';
-    else if (diffDays === 1) bucket = 'T+1';
-    else if (diffDays === 2) bucket = 'T+2';
-    else if (diffDays === 3) bucket = 'T+3';
+    const roundedDiff = Math.round(diffDays);
+    if (roundedDiff <= 0) bucket = 'T+0';
+    else if (roundedDiff === 1) bucket = 'T+1';
+    else if (roundedDiff === 2) bucket = 'T+2';
+    else if (roundedDiff === 3) bucket = 'T+3';
     else bucket = 'T+4+';
 
     buckets[bucket]++;
@@ -159,7 +165,13 @@ function calcAvgVisitTAT(rows) {
     const initDate = parseDate(row['Initiation Date']);
     const visitDate = parseDate(row['Visit Date']);
     if (!initDate || !visitDate) return;
-    const diff = businessDaysDiff(initDate, visitDate);
+    
+    let diff = businessDaysDiff(initDate, visitDate);
+    const queryTime = parseFloat(row['Query Time (Days)']);
+    if (!isNaN(queryTime) && queryTime > 0) {
+      diff = Math.max(0, diff - queryTime);
+    }
+
     if (diff >= 0) { sum += diff; count++; }
   });
   return count > 0 ? Math.round((sum / count) * 100) / 100 : 0;
@@ -172,7 +184,13 @@ function calcAvgReportTAT(rows) {
     const initDate = parseDate(row['Initiation Date']);
     const reportDate = parseDate(row['Report Date']);
     if (!initDate || !reportDate) return;
-    const diff = businessDaysDiff(initDate, reportDate);
+    
+    let diff = businessDaysDiff(initDate, reportDate);
+    const queryTime = parseFloat(row['Query Time (Days)']);
+    if (!isNaN(queryTime) && queryTime > 0) {
+      diff = Math.max(0, diff - queryTime);
+    }
+
     if (diff >= 0) { sum += diff; count++; }
   });
   return count > 0 ? Math.round((sum / count) * 100) / 100 : 0;

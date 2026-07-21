@@ -75,6 +75,7 @@ Your Google Sheet must have the following column headers (exact names):
 | `Prepared by` | Report preparer | `Satish` |
 | `TAT (Visit)` | Visit turnaround (legacy) | `2` |
 | `TAT (Report)` | Report turnaround (legacy) | `3` |
+| `Query Time (Days)` | Time spent in Query status | `0.5` |
 
 ### Date Format
 
@@ -99,11 +100,11 @@ The top dropdowns (Month and Bank) act as **global filters**. Changing these wil
 
 ### 2. Main KPI Cards
 *   **Total Cases:** Shows the absolute count of all rows that pass the global filters, *regardless* of whether they have empty dates, missing statuses, or blank fields.
-*   **Avg Visit TAT:** Calculates `(Visit Date - Initiation Date)`. It **EXCLUDES** any row where either the Visit Date or Initiation Date is empty or invalid. *Note: Excludes Sundays.*
-*   **Avg Report TAT:** Calculates `(Report Date - Initiation Date)`. It **EXCLUDES** any row where either the Report Date or Initiation Date is empty or invalid. *Note: Excludes Sundays.*
+*   **Avg Visit TAT:** Calculates `(Visit Date - Initiation Date) - Query Time (Days)`. It **EXCLUDES** any row where either the Visit Date or Initiation Date is empty or invalid. *Note: Excludes Sundays.*
+*   **Avg Report TAT:** Calculates `(Report Date - Initiation Date) - Query Time (Days)`. It **EXCLUDES** any row where either the Report Date or Initiation Date is empty or invalid. *Note: Excludes Sundays.*
 
 ### 3. TAT Breakup Section
-The TAT Breakup section (T+0, T+1, etc.) calculates `(Report Date - Initiation Date)` to determine the bucket.
+The TAT Breakup section (T+0, T+1, etc.) calculates `(Report Date - Initiation Date) - Query Time (Days)` to determine the bucket.
 *   It **ONLY INCLUDES** rows where the `Status` is exactly **"Report Released"**.
 *   It **EXCLUDES** rows where either the Report Date or Initiation Date is empty.
 *   *Note: An empty 'Visit Date' does NOT exclude a case from this section.*
