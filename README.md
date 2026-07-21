@@ -66,7 +66,7 @@ Your Google Sheet must have the following column headers (exact names):
 | `Case Type` | Type of case | `Valuation` |
 | `Address` | Property address | `Plot 42, Sector 5...` |
 | `Location` | City/area | `Andheri` |
-| `Property typ` | Property type | `Flat` |
+| `Property type` | Property type | `Flat` |
 | `Engineer Name` | Assigned engineer | `Swapnil Bhoir` |
 | `Initiation Date` | Case initiation date | `3-Dec-2025` |
 | `Visit Date` | Site visit date | `5-Dec-2025` |
@@ -76,6 +76,7 @@ Your Google Sheet must have the following column headers (exact names):
 | `TAT (Visit)` | Visit turnaround (legacy) | `2` |
 | `TAT (Report)` | Report turnaround (legacy) | `3` |
 | `Query Time (Days)` | Time spent in Query status | `0.5` |
+| `Query Description` | Details of the query | `Pending document X` |
 
 ### Date Format
 

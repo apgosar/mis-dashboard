@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
 const path = require('path');
+const puppeteer = require('puppeteer');
 
 const app = express();
 app.use(cors());
@@ -286,6 +287,62 @@ function sortByCountDesc(obj) {
     }, {});
 }
 
+function calcAvgQueryTime(rows) {
+  let sum = 0, count = 0;
+  rows.forEach(row => {
+    const queryTime = parseFloat(row['Query Time (Days)']);
+    if (!isNaN(queryTime) && queryTime > 0) {
+      sum += queryTime;
+      count++;
+    }
+  });
+  return count > 0 ? Math.round((sum / count) * 100) / 100 : 0;
+}
+
+function countCasesWithQueries(rows) {
+  let count = 0;
+  rows.forEach(row => {
+    const queryTime = parseFloat(row['Query Time (Days)']);
+    if (!isNaN(queryTime) && queryTime > 0) {
+      count++;
+    }
+  });
+  return count;
+}
+
+function calcQueryTimeByField(rows, field) {
+  const sums = {};
+  const counts = {};
+  
+  rows.forEach(row => {
+    const val = (row[field] || '').trim();
+    const queryTime = parseFloat(row['Query Time (Days)']);
+    
+    if (val && !isNaN(queryTime) && queryTime > 0) {
+      sums[val] = (sums[val] || 0) + queryTime;
+      counts[val] = (counts[val] || 0) + 1;
+    }
+  });
+  
+  const avgs = {};
+  for (const key in sums) {
+    avgs[key] = Math.round((sums[key] / counts[key]) * 100) / 100;
+  }
+  return sortByCountDesc(avgs);
+}
+
+function countQueryCasesByField(rows, field) {
+  const counts = {};
+  rows.forEach(row => {
+    const val = (row[field] || '').trim();
+    const queryTime = parseFloat(row['Query Time (Days)']);
+    if (val && !isNaN(queryTime) && queryTime > 0) {
+      counts[val] = (counts[val] || 0) + 1;
+    }
+  });
+  return sortByCountDesc(counts);
+}
+
 // --- API Routes ---
 
 // Return raw data as JSON
@@ -307,6 +364,50 @@ app.get('/api/data', async (req, res) => {
   } catch (error) {
     console.error('Error fetching data:', error.message);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PDF Export Endpoint using Puppeteer
+app.get('/api/export-pdf', async (req, res) => {
+  try {
+    const { type, date, bank, sections } = req.query;
+    
+    // Launch headless browser
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    
+    const page = await browser.newPage();
+    
+    // Construct local URL for the print template
+    const url = `http://localhost:${PORT}/report-print.html?type=${type || 'daily'}&date=${date || ''}&bank=${encodeURIComponent(bank || 'all')}&sections=${encodeURIComponent(sections || '{}')}`;
+    
+    await page.goto(url, { waitUntil: 'networkidle0' });
+    
+    // Wait for the custom #status element to say 'Ready'
+    await page.waitForFunction('document.getElementById("status").textContent === "Ready"', { timeout: 30000 });
+    
+    // Generate PDF
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '15mm', bottom: '15mm', left: '15mm', right: '15mm' }
+    });
+    
+    await browser.close();
+    
+    const safeDate = date || 'report';
+    const safeBank = (bank && bank !== 'all') ? `_${bank.replace(/[^a-zA-Z0-9]/g, '')}` : '';
+    const filename = `VDS_MIS_${type}_${safeDate}${safeBank}.pdf`;
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.end(Buffer.from(pdfBuffer));
+    
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    res.status(500).send('Error generating PDF: ' + error.message);
   }
 });
 
@@ -332,9 +433,10 @@ app.get('/api/metrics', async (req, res) => {
           branch: row['Branch'] || '',
           address: row['Address'] || '',
           location: row['Location'] || '',
-          propertyType: row['Property typ'] || '',
+          propertyType: row['Property type'] || '',
           engineer: row['Engineer Name'] || '',
           initiationDate: row['Initiation Date'] || '',
+          queryDescription: row['Query Description'] || '',
         });
       } else {
         validRows.push(row);
@@ -360,7 +462,7 @@ app.get('/api/metrics', async (req, res) => {
           branch: row['Branch'] || '',
           address: row['Address'] || '',
           location: row['Location'] || '',
-          propertyType: row['Property typ'] || '',
+          propertyType: row['Property type'] || '',
           engineer: row['Engineer Name'] || '',
           initiationDate: row['Initiation Date'] || '',
         })),
@@ -372,7 +474,7 @@ app.get('/api/metrics', async (req, res) => {
       caseStatus: sortByCountDesc(countBy(validRows, 'Status')),
 
       // 2. Property Type Distribution
-      propertyType: sortByCountDesc(countBy(validRows, 'Property typ')),
+      propertyType: sortByCountDesc(countBy(validRows, 'Property type')),
 
       // 3. Location Distribution (case-insensitive)
       location: sortByCountDesc(countByCaseInsensitive(validRows, 'Location')),
@@ -389,6 +491,12 @@ app.get('/api/metrics', async (req, res) => {
       // Averages
       avgVisitTAT: calcAvgVisitTAT(validRows),
       avgReportTAT: calcAvgReportTAT(validRows),
+      avgQueryTime: calcAvgQueryTime(validRows),
+      casesWithQueries: countCasesWithQueries(validRows),
+
+      // Query Time by specific fields
+      queryTimeByBank: calcQueryTimeByField(validRows, 'Bank Name'),
+      queryCasesByBank: countQueryCasesByField(validRows, 'Bank Name'),
 
       // TAT Breakup for Report Released
       tatBreakup: getTATBreakup(validRows),
@@ -415,22 +523,17 @@ function filterByDateRange(rows, type, dateStr) {
     });
   }
 
-  if (type === 'weekly') {
-    // dateStr = "YYYY-MM-DD" (any day in the week; we compute Mon–Sun range)
+  if (type === 'mtd') {
+    // dateStr = "YYYY-MM-DD"
     const ref = new Date(dateStr + 'T00:00:00');
-    const day = ref.getDay(); // 0=Sun
-    const diffToMon = day === 0 ? -6 : 1 - day;
-    const monday = new Date(ref);
-    monday.setDate(ref.getDate() + diffToMon);
-    monday.setHours(0, 0, 0, 0);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
+    const startOfMonth = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    const endOfDay = new Date(ref);
+    endOfDay.setHours(23, 59, 59, 999);
 
     return rows.filter(row => {
       const d = parseDate(row['Initiation Date']);
       if (!d) return false;
-      return d >= monday && d <= sunday;
+      return d >= startOfMonth && d <= endOfDay;
     });
   }
 
@@ -462,9 +565,10 @@ app.get('/api/report', async (req, res) => {
           branch: row['Branch'] || '',
           address: row['Address'] || '',
           location: row['Location'] || '',
-          propertyType: row['Property typ'] || '',
+          propertyType: row['Property type'] || '',
           engineer: row['Engineer Name'] || '',
           initiationDate: row['Initiation Date'] || '',
+          queryDescription: row['Query Description'] || '',
         });
       } else {
         validRows.push(row);
@@ -482,7 +586,7 @@ app.get('/api/report', async (req, res) => {
           branch: row['Branch'] || '',
           address: row['Address'] || '',
           location: row['Location'] || '',
-          propertyType: row['Property typ'] || '',
+          propertyType: row['Property type'] || '',
           engineer: row['Engineer Name'] || '',
           initiationDate: row['Initiation Date'] || '',
         })),
@@ -494,7 +598,7 @@ app.get('/api/report', async (req, res) => {
         bank: row['Bank Name'] || '',
         branch: row['Branch'] || '',
         location: row['Location'] || '',
-        propertyType: row['Property typ'] || '',
+        propertyType: row['Property type'] || '',
         engineer: row['Engineer Name'] || '',
         initiationDate: row['Initiation Date'] || '',
         visitDate: row['Visit Date'] || '',
@@ -503,7 +607,7 @@ app.get('/api/report', async (req, res) => {
         preparedBy: row['Prepared by'] || '',
       })),
       caseStatus: sortByCountDesc(countBy(validRows, 'Status')),
-      propertyType: sortByCountDesc(countBy(validRows, 'Property typ')),
+      propertyType: sortByCountDesc(countBy(validRows, 'Property type')),
       location: sortByCountDesc(countByCaseInsensitive(validRows, 'Location')),
       engineerEfficiency: sortByCountDesc(countBy(validRows, 'Engineer Name')),
       reportEfficiency: sortByCountDesc(countBy(validRows, 'Prepared by')),
