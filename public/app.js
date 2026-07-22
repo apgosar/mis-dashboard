@@ -21,11 +21,18 @@ let lastMetrics = null; // Store for resize re-render
 let othersLabelMap = {}; // Store original labels aggregated into "Others"
 
 // Table columns to show in drill-down
-const DRILLDOWN_COLUMNS = [
+const DRILLDOWN_COLUMNS_DEFAULT = [
     'Sr no', 'Borrower Name', 'Bank Name', 'Branch', 'Case Type', 'Query Description', 'Address',
     'Location', 'Property type', 'Engineer Name', 'Initiation Date',
     'Visit Date', 'Report Date', 'Status', 'Prepared by', 'TAT (Visit)', 'TAT (Report)'
 ];
+
+const DRILLDOWN_COLUMNS_QUERY = [
+    'Sr no', 'Borrower Name', 'Bank Name', 'Branch', 'Case Type', 'Query Description', 'Query Time (Days)', 'Address',
+    'Location', 'Property type', 'Engineer Name', 'Initiation Date', 'Prepared by'
+];
+
+let currentColumns = DRILLDOWN_COLUMNS_DEFAULT;
 
 // ===== Chart Color Palettes =====
 const PALETTE = {
@@ -249,7 +256,7 @@ function populateBankDropdown(banks) {
 function exportDrilldownCSV() {
     if (!currentDrilldownRows.length) return;
 
-    const columns = DRILLDOWN_COLUMNS;
+    const columns = currentColumns;
     const csvRows = [];
 
     // Header
@@ -664,6 +671,7 @@ let currentDrilldownRows = [];
 function openDrilldown(filterField, filterValue) {
     const isQueryChart = filterField.includes('(Query)');
     const actualField = isQueryChart ? filterField.replace(' (Query)', '') : filterField;
+    currentColumns = isQueryChart ? DRILLDOWN_COLUMNS_QUERY : DRILLDOWN_COLUMNS_DEFAULT;
 
     // Filter rows matching the clicked value (case-insensitive for location)
     currentDrilldownRows = allRows.filter(row => {
@@ -695,6 +703,7 @@ function openDrilldown(filterField, filterValue) {
 function openDrilldownMulti(filterField, filterValues) {
     const isQueryChart = filterField.includes('(Query)');
     const actualField = isQueryChart ? filterField.replace(' (Query)', '') : filterField;
+    currentColumns = isQueryChart ? DRILLDOWN_COLUMNS_QUERY : DRILLDOWN_COLUMNS_DEFAULT;
 
     // Filter rows matching ANY of the "Others" labels
     currentDrilldownRows = allRows.filter(row => {
@@ -731,7 +740,7 @@ function renderDrilldownTable(rows) {
     const empty = document.getElementById('drilldownEmpty');
 
     // Header
-    thead.innerHTML = '<tr>' + DRILLDOWN_COLUMNS.map(col =>
+    thead.innerHTML = '<tr>' + currentColumns.map(col =>
         `<th>${escapeHtml(col)}</th>`
     ).join('') + '</tr>';
 
@@ -744,7 +753,7 @@ function renderDrilldownTable(rows) {
 
     empty.classList.remove('show');
     tbody.innerHTML = rows.map(row =>
-        '<tr>' + DRILLDOWN_COLUMNS.map(col =>
+        '<tr>' + currentColumns.map(col =>
             `<td title="${escapeHtml(row[col] || '')}">${escapeHtml(row[col] || '—')}</td>`
         ).join('') + '</tr>'
     ).join('');
@@ -757,7 +766,7 @@ function filterDrilldownTable(query) {
         return;
     }
     const filtered = currentDrilldownRows.filter(row =>
-        DRILLDOWN_COLUMNS.some(col => (row[col] || '').toLowerCase().includes(q))
+        currentColumns.some(col => (row[col] || '').toLowerCase().includes(q))
     );
     renderDrilldownTable(filtered);
     document.getElementById('drilldownCount').textContent = `${filtered.length} of ${currentDrilldownRows.length} records`;
@@ -890,7 +899,7 @@ function updateTimestamp() {
             }
             // Trigger download via window.location (or window.open)
             window.location.href = `/api/export-pdf?${params.join('&')}`;
-            
+
             // Re-enable button after a few seconds
             setTimeout(() => {
                 btnDownload.disabled = false;
@@ -904,4 +913,4 @@ function updateTimestamp() {
         }
     });
 
-    })();
+})();
