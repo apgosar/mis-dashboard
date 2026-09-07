@@ -60,13 +60,13 @@ function renderReport(m, sections) {
     const sec = createSection('TAT Breakup');
     const grid = document.createElement('div');
     grid.className = 'kpi-grid';
-    const tat = m.tatBreakup || {};
+    const tat = (m.tatBreakup && m.tatBreakup.buckets) || {};
     grid.innerHTML = `
-      <div class="kpi-box"><div class="kpi-label">T+0</div><div class="kpi-val">${tat.t0 || 0}</div></div>
-      <div class="kpi-box"><div class="kpi-label">T+1</div><div class="kpi-val">${tat.t1 || 0}</div></div>
-      <div class="kpi-box"><div class="kpi-label">T+2</div><div class="kpi-val">${tat.t2 || 0}</div></div>
-      <div class="kpi-box"><div class="kpi-label">T+3</div><div class="kpi-val">${tat.t3 || 0}</div></div>
-      <div class="kpi-box"><div class="kpi-label">T+4+</div><div class="kpi-val">${tat.t4Plus || 0}</div></div>
+      <div class="kpi-box"><div class="kpi-label">T+0</div><div class="kpi-val">${tat['T+0'] || 0}</div></div>
+      <div class="kpi-box"><div class="kpi-label">T+1</div><div class="kpi-val">${tat['T+1'] || 0}</div></div>
+      <div class="kpi-box"><div class="kpi-label">T+2</div><div class="kpi-val">${tat['T+2'] || 0}</div></div>
+      <div class="kpi-box"><div class="kpi-label">T+3</div><div class="kpi-val">${tat['T+3'] || 0}</div></div>
+      <div class="kpi-box"><div class="kpi-label">T+4+</div><div class="kpi-val">${tat['T+4+'] || 0}</div></div>
     `;
     sec.appendChild(grid);
   }
