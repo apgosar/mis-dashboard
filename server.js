@@ -551,6 +551,18 @@ app.get('/api/report', async (req, res) => {
     // Apply bank filter
     rows = filterByBank(rows, req.query.bank);
 
+    // Month-to-date reports are sorted by Initiation Date, most recent first
+    if ((req.query.type || 'daily') === 'mtd') {
+      rows = rows.slice().sort((a, b) => {
+        const da = parseDate(a['Initiation Date']);
+        const db = parseDate(b['Initiation Date']);
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return db - da;
+      });
+    }
+
     // Separate query-not-visited
     const validRows = [];
     const queryNotVisited = [];
@@ -559,7 +571,6 @@ app.get('/api/report', async (req, res) => {
       const visitDate = (row['Visit Date'] || '').trim();
       if (status === 'Query' && !visitDate) {
         queryNotVisited.push({
-          srNo: row['Sr no'] || '',
           borrower: row['Borrower Name'] || '',
           bank: row['Bank Name'] || '',
           branch: row['Branch'] || '',
@@ -575,12 +586,15 @@ app.get('/api/report', async (req, res) => {
       }
     });
 
+    // Sr no in the sheet is often left blank for newer rows, so the report
+    // numbers rows itself based on the order shown in each table.
+    const withSrNo = (items) => items.map((item, i) => ({ srNo: i + 1, ...item }));
+
     const metrics = {
       totalCases: validRows.length,
-      todaySchedule: validRows
+      todaySchedule: withSrNo(validRows
         .filter(row => row['Status'] === 'Today Schedule')
         .map(row => ({
-          srNo: row['Sr no'] || '',
           borrower: row['Borrower Name'] || '',
           bank: row['Bank Name'] || '',
           branch: row['Branch'] || '',
@@ -589,11 +603,10 @@ app.get('/api/report', async (req, res) => {
           propertyType: row['Property type'] || '',
           engineer: row['Engineer Name'] || '',
           initiationDate: row['Initiation Date'] || '',
-        })),
-      queryNotVisited,
+        }))),
+      queryNotVisited: withSrNo(queryNotVisited),
       // All case details for the report
-      allCaseDetails: validRows.map(row => ({
-        srNo: row['Sr no'] || '',
+      allCaseDetails: withSrNo(validRows.map(row => ({
         borrower: row['Borrower Name'] || '',
         bank: row['Bank Name'] || '',
         branch: row['Branch'] || '',
@@ -605,7 +618,7 @@ app.get('/api/report', async (req, res) => {
         reportDate: row['Report Date'] || '',
         status: row['Status'] || '',
         preparedBy: row['Prepared by'] || '',
-      })),
+      }))),
       caseStatus: sortByCountDesc(countBy(validRows, 'Status')),
       propertyType: sortByCountDesc(countBy(validRows, 'Property type')),
       location: sortByCountDesc(countByCaseInsensitive(validRows, 'Location')),
