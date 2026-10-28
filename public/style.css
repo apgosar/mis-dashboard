@@ -1366,3 +1366,18 @@ body {
   opacity: 0.5;
   pointer-events: none;
 }
+/* ===== Email Settings Modal ===== */
+.email-settings-msg {
+  min-height: 1.2em;
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.email-settings-msg.success {
+  color: #00b894;
+}
+
+.email-settings-msg.error {
+  color: #e76f51;
+}

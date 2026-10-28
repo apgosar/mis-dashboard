@@ -1,0 +1,11 @@
+node_modules
+.cache
+.git
+.gitignore
+.env
+*.json
+!package.json
+!package-lock.json
+*.log
+deploy.ps1
+README.md

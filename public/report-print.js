@@ -89,6 +89,9 @@ function renderReport(m, sections) {
     const entries = Object.entries(secObj.data || {});
     if (entries.length === 0) return;
 
+    // Give horizontal charts enough height to show every label
+    if (secObj.horizontal) box.style.height = Math.max(350, entries.length * 26 + 70) + 'px';
+
     const labels = entries.map(e => e[0]);
     const values = entries.map(e => e[1]);
     const colors = labels.map((_, i) => secObj.colors[i % secObj.colors.length]);
@@ -110,6 +113,9 @@ function renderReport(m, sections) {
         responsive: true,
         maintainAspectRatio: false,
         indexAxis: secObj.horizontal ? 'y' : 'x',
+        scales: secObj.type === 'bar' ? {
+          [secObj.horizontal ? 'y' : 'x']: { ticks: { autoSkip: false } }
+        } : {},
         layout: {
           padding: 15
         },
@@ -187,14 +193,14 @@ function renderReport(m, sections) {
     sec.appendChild(table);
   };
 
-  if (sections.todaySchedule) {
+  if (sections.schedule) {
     createTableSection("Today's Scheduled Visits", [
       { key: 'srNo', label: 'Sr' }, { key: 'borrower', label: 'Borrower' },
       { key: 'location', label: 'Location' }, { key: 'engineer', label: 'Engineer' }
     ], m.todaySchedule);
   }
 
-  if (sections.queryNotVisited) {
+  if (sections.query) {
     createTableSection("Query and Visit Not Done", [
       { key: 'srNo', label: 'Sr' }, { key: 'borrower', label: 'Borrower' },
       { key: 'location', label: 'Location' }, { key: 'queryDescription', label: 'Query Description' }

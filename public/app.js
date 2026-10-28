@@ -914,3 +914,77 @@ function updateTimestamp() {
     });
 
 })();
+
+// ===== Email Settings (graphs included in the scheduled bank emails) =====
+(function initEmailSettings() {
+    const overlay = document.getElementById('emailSettingsOverlay');
+    const btnOpen = document.getElementById('btnEmailSettings');
+    const btnClose = document.getElementById('emailSettingsClose');
+    const btnSave = document.getElementById('btnSaveEmailSettings');
+    const passInput = document.getElementById('emailSettingsPass');
+    const msg = document.getElementById('emailSettingsMsg');
+    const boxes = () => document.querySelectorAll('#emailSections .report-checkbox');
+
+    function showMessage(text, isError) {
+        msg.textContent = text;
+        msg.className = 'email-settings-msg' + (text ? (isError ? ' error' : ' success') : '');
+    }
+
+    async function loadSettings() {
+        try {
+            const res = await fetch('/api/email-settings');
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error);
+            boxes().forEach(label => {
+                label.querySelector('input').checked = json.graphs.includes(label.dataset.section);
+            });
+        } catch (err) {
+            showMessage('Could not load saved settings: ' + err.message, true);
+        }
+    }
+
+    function openModal() {
+        showMessage('');
+        passInput.value = '';
+        overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        loadSettings();
+    }
+
+    function closeModal() {
+        overlay.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+
+    btnOpen.addEventListener('click', openModal);
+    btnClose.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal();
+    });
+
+    btnSave.addEventListener('click', async () => {
+        if (!passInput.value) { showMessage('Enter the passphrase to save.', true); return; }
+        const graphs = [];
+        boxes().forEach(label => {
+            if (label.querySelector('input').checked) graphs.push(label.dataset.section);
+        });
+
+        btnSave.disabled = true;
+        showMessage('Saving...');
+        try {
+            const res = await fetch('/api/email-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-admin-passphrase': passInput.value },
+                body: JSON.stringify({ graphs }),
+            });
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error);
+            passInput.value = '';
+            showMessage('Saved. Applies from the next scheduled email.', false);
+        } catch (err) {
+            showMessage(err.message, true);
+        } finally {
+            btnSave.disabled = false;
+        }
+    });
+})();

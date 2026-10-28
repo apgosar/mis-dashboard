@@ -1,51 +1,19 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { google } = require('googleapis');
+const crypto = require('crypto');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const { fetchSheetData } = require('./sheets');
+const { GRAPH_KEYS, getEmailSettings, saveEmailSettings } = require('./emailConfig');
+const { runMtdEmailJob } = require('./reportMailer');
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
-const SHEET_ID = process.env.GOOGLE_SHEET_ID;
-const SHEET_NAME = process.env.SHEET_NAME || 'Sheet 1';
-const CREDENTIALS_PATH = process.env.CREDENTIALS_PATH || './credentials.json';
-
-// --- Google Sheets Auth ---
-async function getAuthClient() {
-  let authOptions;
-
-  // Cloud: use GOOGLE_CREDENTIALS_JSON env var (paste full JSON content)
-  if (process.env.GOOGLE_CREDENTIALS_JSON) {
-    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-    authOptions = {
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-    };
-  } else {
-    // Local: use key file
-    authOptions = {
-      keyFile: path.resolve(__dirname, CREDENTIALS_PATH),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-    };
-  }
-
-  const auth = new google.auth.GoogleAuth(authOptions);
-  return auth.getClient();
-}
-
-async function fetchSheetData() {
-  const authClient = await getAuthClient();
-  const sheets = google.sheets({ version: 'v4', auth: authClient });
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: SHEET_NAME,
-  });
-  return response.data.values || [];
-}
 
 // --- Helpers ---
 function parseRows(rawData) {
@@ -367,17 +335,21 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
+function launchBrowser() {
+  return puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
+}
+
 // PDF Export Endpoint using Puppeteer
 app.get('/api/export-pdf', async (req, res) => {
   try {
     const { type, date, bank, sections } = req.query;
-    
+
     // Launch headless browser
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    
+    const browser = await launchBrowser();
+
     const page = await browser.newPage();
     
     // Construct local URL for the print template
@@ -540,19 +512,18 @@ function filterByDateRange(rows, type, dateStr) {
   return rows;
 }
 
-// Report endpoint – returns metrics for a specific date range
-app.get('/api/report', async (req, res) => {
-  try {
-    const rawData = await fetchSheetData();
-    const allRows = parseRows(rawData);
+// Builds the report metrics for a date range (and optional bank).
+// Pass allRows to reuse already-fetched sheet rows.
+async function buildReportMetrics({ type = 'daily', date, bank, allRows }) {
+    allRows = allRows || parseRows(await fetchSheetData());
 
     // Apply date range filter
-    let rows = filterByDateRange(allRows, req.query.type || 'daily', req.query.date);
+    let rows = filterByDateRange(allRows, type, date);
     // Apply bank filter
-    rows = filterByBank(rows, req.query.bank);
+    rows = filterByBank(rows, bank);
 
     // Month-to-date reports are sorted by Initiation Date, most recent first
-    if ((req.query.type || 'daily') === 'mtd') {
+    if (type === 'mtd') {
       rows = rows.slice().sort((a, b) => {
         const da = parseDate(a['Initiation Date']);
         const db = parseDate(b['Initiation Date']);
@@ -630,10 +601,121 @@ app.get('/api/report', async (req, res) => {
       tatBreakup: getTATBreakup(validRows),
     };
 
+    return metrics;
+}
+
+// Report endpoint – returns metrics for a specific date range
+app.get('/api/report', async (req, res) => {
+  try {
+    const metrics = await buildReportMetrics({
+      type: req.query.type || 'daily',
+      date: req.query.date,
+      bank: req.query.bank,
+    });
     res.json({ success: true, metrics });
   } catch (error) {
     console.error('Error generating report:', error.message);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// --- Scheduled MTD report emails ---
+
+function secretMatches(provided, expected) {
+  const a = Buffer.from(provided || '');
+  const b = Buffer.from(expected || '');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Which graphs go in the emailed report (stored in the EmailSettings tab)
+app.get('/api/email-settings', async (req, res) => {
+  try {
+    const graphs = await getEmailSettings();
+    res.json({ success: true, graphs, available: GRAPH_KEYS });
+  } catch (error) {
+    console.error('Error reading email settings:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/email-settings', async (req, res) => {
+  const expected = process.env.EMAIL_SETTINGS_PASSPHRASE;
+  if (!expected) {
+    return res.status(503).json({ success: false, error: 'Email settings are not enabled on this server' });
+  }
+  if (!secretMatches(req.get('x-admin-passphrase'), expected)) {
+    return res.status(401).json({ success: false, error: 'Incorrect passphrase' });
+  }
+  const graphs = req.body && req.body.graphs;
+  if (!Array.isArray(graphs)) {
+    return res.status(400).json({ success: false, error: 'graphs must be an array' });
+  }
+  const invalid = graphs.filter(k => !GRAPH_KEYS.includes(k));
+  if (invalid.length) {
+    return res.status(400).json({ success: false, error: `Unknown section(s): ${invalid.join(', ')}` });
+  }
+  try {
+    const saved = await saveEmailSettings(graphs);
+    res.json({ success: true, graphs: saved });
+  } catch (error) {
+    console.error('Error saving email settings:', error.message);
+    const missingTab = /Unable to parse range/i.test(error.message);
+    res.status(missingTab ? 400 : 500).json({
+      success: false,
+      error: missingTab ? 'The "EmailSettings" tab was not found in the Google Sheet' : error.message,
+    });
+  }
+});
+
+let emailJobRunning = false;
+
+// Triggered by Cloud Scheduler. Sends each bank its month-to-date report.
+// Query: dryRun=true, bank=<name>, date=YYYY-MM-DD (default: today in IST)
+app.post('/api/send-reports', async (req, res) => {
+  const secret = process.env.REPORT_CRON_SECRET;
+  if (!secret) {
+    return res.status(503).json({ success: false, error: 'REPORT_CRON_SECRET is not configured' });
+  }
+  if (!secretMatches(req.get('authorization'), `Bearer ${secret}`)) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const date = req.query.date
+    || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ success: false, error: 'date must be YYYY-MM-DD' });
+  }
+  if (emailJobRunning) {
+    return res.status(409).json({ success: false, error: 'A report email job is already running' });
+  }
+
+  emailJobRunning = true;
+  try {
+    let bankNames = null;
+    const results = await runMtdEmailJob(
+      {
+        date,
+        bank: req.query.bank,
+        dryRun: req.query.dryRun === 'true',
+        debugDir: process.env.REPORT_DRYRUN_DIR,
+      },
+      {
+        port: PORT,
+        launchBrowser,
+        buildReportMetrics,
+        resolveBank: async (name) => {
+          if (!bankNames) bankNames = getAvailableBanks(parseRows(await fetchSheetData()));
+          return bankNames.find(b => b.toLowerCase() === name.trim().toLowerCase()) || null;
+        },
+      }
+    );
+    console.log('MTD report job:', JSON.stringify(results.map(r => ({ bank: r.bank, status: r.status, error: r.error }))));
+    res.json({ success: true, date, results });
+  } catch (error) {
+    console.error('MTD report job failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  } finally {
+    emailJobRunning = false;
   }
 });
 

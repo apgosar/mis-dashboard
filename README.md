@@ -38,7 +38,12 @@ A real-time Management Information System (MIS) dashboard for VDS Advisory that 
 
 ```
 mis_dashboard/
-├── server.js              # Express server, Google Sheets API, metrics calculation
+├── server.js              # Express server, metrics calculation, report/email endpoints
+├── sheets.js              # Google Sheets read/write helpers
+├── emailConfig.js         # Recipients tab + email settings (graph selection)
+├── reportMailer.js        # Renders charts, builds email + Excel, sends via Gmail
+├── Dockerfile             # Cloud Run container (Node + Chromium)
+├── deploy.ps1             # One-step Cloud Run + Cloud Scheduler deployment
 ├── package.json
 ├── .env                   # Environment variables (not committed)
 ├── .gitignore
@@ -163,48 +168,73 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## Deployment (Render)
+## Deployment (Google Cloud Run)
 
-### 1. Push to GitHub
+The app runs on **Cloud Run** (a container that includes Chromium for PDF export and email chart rendering). A **Cloud Scheduler** job triggers the daily Month-to-Date bank emails. Everything is deployed by one script: `deploy.ps1`.
 
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/YOUR_USERNAME/mis-dashboard.git
-git branch -M main
-git push -u origin main
-```
+### 1. Prerequisites
 
-### 2. Create a Render Web Service
-
-1. Go to [dashboard.render.com](https://dashboard.render.com)
-2. Click **New +** → **Web Service**
-3. Connect your GitHub repository
-
-| Setting | Value |
-|---------|-------|
-| Build Command | `npm install` |
-| Start Command | `node server.js` |
-| Instance Type | Free |
-
-### 3. Set Environment Variables
-
-In Render → **Environment** tab:
+- [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed and logged in (`gcloud auth login`), and a GCP project with billing enabled (`gcloud config set project <id>`)
+- A `.env` file in the repo root with these keys (secrets stay local; the script injects them into Cloud Run at deploy time):
 
 | Key | Value |
 |-----|-------|
 | `GOOGLE_SHEET_ID` | Your Google Sheet ID |
-| `SHEET_NAME` | `Reports` |
-| `GOOGLE_CREDENTIALS_JSON` | *(entire content of your service account JSON file)* |
+| `SHEET_NAME` | Main data tab name, e.g. `Reports` |
+| `CREDENTIALS_PATH` | Path to the service account key file, e.g. `./decent-subset-*.json` |
+| `GMAIL_USER` | Gmail address the reports are sent from |
+| `GMAIL_APP_PASSWORD` | A Google **App Password** for that account (requires 2-Step Verification) |
+| `MAIL_FROM_NAME` | *(optional)* Sender name recipients see, default `VDS Advisory MIS` |
+| `MAIL_FROM_ADDRESS` | *(optional)* Sender address recipients see, default `GMAIL_USER`. Gmail only allows the account's own address or a verified "Send mail as" alias |
+| `EMAIL_SETTINGS_PASSPHRASE` | Passphrase required to save the dashboard's *Email Settings* |
+| `REPORT_CRON_SECRET` | *(optional)* Generated and appended to `.env` by the script if missing |
 
-> **Note:** On Render, credentials are passed via `GOOGLE_CREDENTIALS_JSON` env var (the full JSON string), not as a file.
+- The Google Sheet must be shared with the service account as **Editor**, and contain the `Recipients` and `EmailSettings` tabs (see below).
 
-### 4. Deploy
+### 2. Deploy
 
-Click **Deploy**. Your dashboard will be live at `https://your-app.onrender.com`.
+```powershell
+./deploy.ps1 -DryRun                 # validate .env and preview every command (secrets masked)
+./deploy.ps1 -ProjectId <your-id>    # deploy for real
+```
 
-Future `git push` to `main` will **auto-deploy**.
+The script enables the required APIs, builds and deploys the service to Cloud Run (`asia-south1`), and creates/updates the Cloud Scheduler job. Re-running it redeploys and updates the job in place. The schedule is the `$ScheduleCron` variable at the top of the script (default `30 19 * * 1-6` = 7:30 PM IST, Mon-Sat).
+
+> `.env` values end up as plain Cloud Run environment variables (visible to anyone with view access to the GCP project). Keep `.env` out of git (it is in `.gitignore`).
+
+---
+
+## Scheduled Bank Emails
+
+Every evening each bank receives its own **Month-to-Date** report: the selected graphs (plus KPI summary and TAT breakup) in the email body, and the full case list attached as an Excel file. Cases are sorted newest Initiation Date first.
+
+### `Recipients` tab
+
+Create a tab named exactly `Recipients` in the Google Sheet, header in row 1, one row per bank:
+
+| Bank | To | Cc | Bcc | Active |
+|------|----|----|-----|--------|
+| ICICI BANK | a@icici.com, b@icici.com | mgr@icici.com | ops@vdsadvisory.in | Y |
+| BAJAJ | x@bajaj.com | | | Y |
+| HDFC | y@hdfc.com | z@hdfc.com | | N |
+
+- `Bank` must match the main tab's `Bank Name` values (case-insensitive).
+- `To` / `Cc` / `Bcc` accept several addresses separated by `,` or `;`. `To` is required.
+- `Active`: `Y` or blank sends; `N` skips the bank.
+- Invalid addresses are ignored, duplicates across To/Cc/Bcc are removed, and banks with no cases month-to-date are skipped.
+
+### `EmailSettings` tab and the Email Settings button
+
+Create an empty tab named `EmailSettings`. In the dashboard, click **Email Settings**, tick the sections to include (KPI Summary, TAT Breakup and the five graphs), enter the passphrase and save. The choice applies to all banks and is stored in that tab.
+
+### Testing
+
+```bash
+# Dry run: renders everything and reports what would be sent, but sends nothing
+curl -X POST -H "Authorization: Bearer <REPORT_CRON_SECRET>" "<service-url>/api/send-reports?dryRun=true&bank=ICICI%20BANK"
+```
+
+Optional query parameters: `bank=<name>` (single bank), `date=YYYY-MM-DD` (default: today in IST). To trigger the real job immediately: `gcloud scheduler jobs run vds-mis-mtd-reports --location asia-south1`.
 
 ---
 
@@ -223,15 +253,15 @@ The dashboard reads live from Google Sheets on every request. To update the data
 If you need to **rename columns**, **add new columns**, or **change the sheet name**:
 
 1. **Renaming a column** — Update the column header in the sheet, then update the corresponding field name in `server.js` (search for the old column name in `parseRows`, `countBy`, or metrics calculation)
-2. **Changing sheet name** — Update the `SHEET_NAME` value in your `.env` file (local) or Render environment variables (cloud)
-3. **Switching to a different Google Sheet** — Update `GOOGLE_SHEET_ID` in `.env` or Render environment variables
+2. **Changing sheet name** — Update the `SHEET_NAME` value in your `.env` file (local), then re-run `deploy.ps1` (cloud)
+3. **Switching to a different Google Sheet** — Update `GOOGLE_SHEET_ID` in `.env`, then re-run `deploy.ps1` for the cloud deployment
 
 ### Connecting a New Google Sheet
 
 1. Copy the Sheet ID from the URL: `https://docs.google.com/spreadsheets/d/`**`SHEET_ID_HERE`**`/edit`
-2. **Share the sheet** with your service account email (found in your credentials JSON under `client_email`) — give **Viewer** access
+2. **Share the sheet** with your service account email (found in your credentials JSON under `client_email`) — give **Editor** access (needed to save the dashboard's Email Settings)
 3. Update `GOOGLE_SHEET_ID` in your environment
-4. Restart the server (local) or redeploy (Render)
+4. Restart the server (local) or re-run `deploy.ps1` (cloud)
 
 ### Adding a New Status Value
 
