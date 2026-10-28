@@ -22,13 +22,13 @@ let othersLabelMap = {}; // Store original labels aggregated into "Others"
 
 // Table columns to show in drill-down
 const DRILLDOWN_COLUMNS_DEFAULT = [
-    'Sr no', 'Borrower Name', 'Bank Name', 'Branch', 'Case Type', 'Query Description', 'Address',
+    'Sr. no', 'Borrower Name', 'Bank Name', 'Branch', 'Case Type', 'Query Description', 'Address',
     'Location', 'Property type', 'Engineer Name', 'Initiation Date',
     'Visit Date', 'Report Date', 'Status', 'Prepared by', 'TAT (Visit)', 'TAT (Report)'
 ];
 
 const DRILLDOWN_COLUMNS_QUERY = [
-    'Sr no', 'Borrower Name', 'Bank Name', 'Branch', 'Case Type', 'Query Description', 'Query Time (Days)', 'Address',
+    'Sr. no', 'Borrower Name', 'Bank Name', 'Branch', 'Case Type', 'Query Description', 'Query Time (Days)', 'Address',
     'Location', 'Property type', 'Engineer Name', 'Initiation Date', 'Prepared by'
 ];
 
@@ -282,7 +282,7 @@ function exportDrilldownCSV() {
 }
 
 // ===== TAT Breakup =====
-let tatBucketData = {}; // Store per-bucket Sr No lists for drill-down
+let tatBucketData = {}; // Store per-bucket sheet row numbers for drill-down
 
 function renderTATBreakup(tatData) {
     document.getElementById('tatTotal').textContent = `${tatData.totalCases} cases`;
@@ -318,12 +318,12 @@ function renderTATBreakup(tatData) {
 }
 
 function openTATDrilldown(bucketKey) {
-    const srNos = tatBucketData[bucketKey] || [];
-    if (!srNos.length) return;
+    const rowIds = tatBucketData[bucketKey] || [];
+    if (!rowIds.length) return;
 
-    // Filter allRows by Sr no in this bucket
-    const srSet = new Set(srNos);
-    currentDrilldownRows = allRows.filter(row => srSet.has(row['Sr no']));
+    // Filter allRows by sheet row number in this bucket
+    const rowSet = new Set(rowIds);
+    currentDrilldownRows = allRows.filter(row => rowSet.has(row._row));
 
     document.getElementById('drilldownTitle').textContent = `TAT Breakup: ${bucketKey}`;
     document.getElementById('drilldownCount').textContent = `${currentDrilldownRows.length} records`;

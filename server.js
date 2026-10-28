@@ -19,8 +19,8 @@ const PORT = process.env.PORT || 3000;
 function parseRows(rawData) {
   if (rawData.length < 2) return [];
   const headers = rawData[0].map(h => h.trim());
-  const rows = rawData.slice(1).map(row => {
-    const obj = {};
+  const rows = rawData.slice(1).map((row, idx) => {
+    const obj = { _row: idx + 2 }; // sheet row number, a stable per-row id for drill-downs
     headers.forEach((header, i) => {
       obj[header] = row[i] !== undefined ? row[i].trim() : '';
     });
@@ -121,7 +121,7 @@ function getTATBreakup(rows) {
     else bucket = 'T+4+';
 
     buckets[bucket]++;
-    bucketRows[bucket].push(row['Sr no']);
+    bucketRows[bucket].push(row._row);
   });
 
   return { buckets, bucketRows, totalCases };
@@ -399,7 +399,7 @@ app.get('/api/metrics', async (req, res) => {
       const visitDate = (row['Visit Date'] || '').trim();
       if (status === 'Query' && !visitDate) {
         queryNotVisited.push({
-          srNo: row['Sr no'] || '',
+          srNo: row['Sr. no'] || '',
           borrower: row['Borrower Name'] || '',
           bank: row['Bank Name'] || '',
           branch: row['Branch'] || '',
@@ -428,7 +428,7 @@ app.get('/api/metrics', async (req, res) => {
       todaySchedule: validRows
         .filter(row => row['Status'] === 'Today Schedule')
         .map(row => ({
-          srNo: row['Sr no'] || '',
+          srNo: row['Sr. no'] || '',
           borrower: row['Borrower Name'] || '',
           bank: row['Bank Name'] || '',
           branch: row['Branch'] || '',
@@ -557,8 +557,8 @@ async function buildReportMetrics({ type = 'daily', date, bank, allRows }) {
       }
     });
 
-    // Sr no in the sheet is often left blank for newer rows, so the report
-    // numbers rows itself based on the order shown in each table.
+    // The report numbers rows 1..n in the order shown in each table, rather
+    // than using the sheet's Sr. no, so the numbering stays contiguous.
     const withSrNo = (items) => items.map((item, i) => ({ srNo: i + 1, ...item }));
 
     const metrics = {
